@@ -7,5 +7,7 @@ maintain.
 Initially, this repository contained
 - the bokeh-based dashboard, which will be re-written in plotly/dash and might be moved
   to a separate repository.
+- Example code for calculating the parameters of the pension system endogenous to
+  current state of labour supply / wages.
 - a set of tests of Lohnsteuer against the German Minsitry of Finance's API, which is
   not sufficiently stable over time to keep the tests as a component of GETTSIM proper.
