@@ -6,6 +6,7 @@ from bokeh.palettes import Category10
 from bokeh.plotting import figure
 
 from .plotstyle import plotstyle
+from datetime import date
 
 
 def social_assistance(plot_dict, data):
@@ -14,7 +15,7 @@ def social_assistance(plot_dict, data):
             plot_width=750,
             plot_height=400,
             y_range=(0, 500),
-            x_range=(2005, 2022),
+            x_range=(2005, date.today().year),
             tooltips="$name: @$name €",
         )
 

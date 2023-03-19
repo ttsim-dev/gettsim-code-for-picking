@@ -6,6 +6,7 @@ from bokeh.models import Slider
 from bokeh.plotting import figure
 
 from .plotstyle import plotstyle
+from datetime import date
 
 
 def tax_rate(plot_dict, data):  # noqa: U100
@@ -52,10 +53,12 @@ def tax_rate(plot_dict, data):  # noqa: U100
 
     tax_rate_dict_full = data
 
-    year_selection = Slider(start=2002, end=2021, value=2021, step=1, title="Year")
+    year_selection = Slider(
+        start=2002, end=date.today().year, value=date.today().year, step=1, title="Year"
+    )
     year_selection.on_change("value", update_plot)
 
-    src = make_dataset(2021, tax_rate_dict_full)
+    src = make_dataset(date.today().year, tax_rate_dict_full)
 
     p = setup_plot(src)
     description = Div(text=plot_dict["description"], width=800)

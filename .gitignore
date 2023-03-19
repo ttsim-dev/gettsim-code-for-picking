@@ -68,7 +68,5 @@ ___*
 .env/installed_conda_pkgs
 .env/installed_pip_pkgs
 .env/installed_spec.json
-docs/_build
-docs/tutorials/sandbox_cz.ipynb
 params_dashboard_data.pickle
 _version.py

@@ -88,8 +88,8 @@ def deduction_data(start, end):
     # Adjust dictionary entries into columns for kinderfreibetrag
     deduction_df = pd.concat(
         [
-            deduction_df.drop(["kinderfreibetrag", "datum"], axis=1),
-            deduction_df["kinderfreibetrag"].apply(pd.Series),
+            deduction_df.drop(["kinderfreib", "datum"], axis=1),
+            deduction_df["kinderfreib"].apply(pd.Series),
         ],
         axis=1,
     )
@@ -123,22 +123,20 @@ def prepare_wg_data(sel_year, hh_size):
     # Miete needs to be corrected acc. to mietstufe and hh size
     if sel_year <= 2008:
         wohngeld_miete_m_hh = wohngeld_miete_m_hh_bis_2008(
-            pd.Series([3] * len(miete)),
-            pd.Series([1980] * len(miete)),
-            household_size,
-            miete,
-            pd.Series([1] * len(miete)),
-            wohngeld_min_miete_m_hh(household_size, params),
-            params,
+            mietstufe=pd.Series([3] * len(miete)),
+            immobilie_baujahr_hh=pd.Series([1980] * len(miete)),
+            haushaltsgröße_hh=household_size,
+            bruttokaltmiete_m_hh=miete,
+            wohngeld_min_miete_m_hh=wohngeld_min_miete_m_hh(household_size, params),
+            wohngeld_params=params,
         )
     if 2009 <= sel_year:
         wohngeld_miete_m_hh = wohngeld_miete_m_hh_ab_2009(
-            pd.Series([3] * len(miete)),
-            household_size,
-            miete,
-            pd.Series([1] * len(miete)),
-            wohngeld_min_miete_m_hh(household_size, params),
-            params,
+            mietstufe=pd.Series([3] * len(miete)),
+            haushaltsgröße_hh=household_size,
+            bruttokaltmiete_m_hh=miete,
+            wohngeld_min_miete_m_hh=wohngeld_min_miete_m_hh(household_size, params),
+            wohngeld_params=params,
         )
 
     # Create a dataframe for the simulated data
@@ -153,7 +151,7 @@ def prepare_wg_data(sel_year, hh_size):
         wohngeld_df[this_column] = wohngeld_vor_vermög_check_m_hh(
             haushaltsgröße_hh=household_size,
             # Account for minimum income
-            wohngeld_eink_m=np.maximum(e, params["min_eink"][hh_size]),
+            wohngeld_eink_m_hh=np.maximum(e, params["min_eink"][hh_size]),
             wohngeld_miete_m_hh=wohngeld_miete_m_hh,
             wohngeld_params=params,
         )
@@ -164,7 +162,7 @@ def prepare_wg_data(sel_year, hh_size):
 
 def wohngeld_data():
     wg_dict = {}
-    years = [1992, 2001, 2009, 2016, 2020, 2021]
+    years = [2001, 2009, 2016, 2020, 2021]
 
     for i in years:
         wg_dict[i] = {j: prepare_wg_data(i, j) for j in range(1, 13)}
