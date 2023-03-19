@@ -8,6 +8,7 @@ from bokeh.plotting import figure
 from .plotstyle import plotstyle
 from datetime import date
 
+
 def social_assistance(plot_dict, data):
     def setup_plot(src):
         p = figure(
