@@ -164,18 +164,19 @@ def value_to_string(value: Any) -> str:
 def write_yaml_to_file(
     out: dict[str, dict], name: str, year: Optional[int] = None
 ) -> None:
-    text = yaml.dump(out, sort_keys=False, allow_unicode=True, indent=2, width=88)
-    if year is None:
-        path_ = TEST_DATA_DIR / name / f"{name}.yaml"
-    else:
-        path_ = TEST_DATA_DIR / name / f"{year}.yaml"
+    for hh_id, hh_dict in out.items():
+        text = yaml.dump(hh_dict, sort_keys=False, allow_unicode=True, indent=2, width=88)
+        if year is None:
+            path = TEST_DATA_DIR / name / f"{hh_id}.yaml"
+        else:
+            path = TEST_DATA_DIR / name / str(year) / f"{hh_id}.yaml"
 
-    path_.parent.mkdir(parents=True, exist_ok=True)
+        path.parent.mkdir(parents=True, exist_ok=True)
 
-    print(f"Writing to {path_}")  # noqa: T201
+        print(f"Writing to {path}")
 
-    with path_.open("w", encoding="utf-8") as text_file:
-        text_file.write(text)
+        with open(path, "w", encoding="utf-8") as text_file:
+            text_file.write(text)
 
 
 def convert_test_data() -> None:
