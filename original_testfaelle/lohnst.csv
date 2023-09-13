@@ -1,4 +1,4 @@
-year,hh_id,tu_id,p_id,wohnort_ost,steuerklasse,bruttolohn_m,alter,hat_kinder,arbeitsstunden_w,in_ausbildung,ges_krankenv_zusatzbeitr_satz,ges_pflegev_zusatz_kinderlos,lohnst_m,soli_st_lohnst_m
+jahr,hh_id,tu_id,p_id,wohnort_ost,steuerklasse,bruttolohn_m,alter,hat_kinder,arbeitsstunden_w,in_ausbildung,ges_krankenv_zusatzbeitr_satz,ges_pflegev_zusatz_kinderlos,lohnst_m,soli_st_lohnst_m
 2022,50,50,50,True,3,1653.6000000000001,25,True,40.0,False,0.73,False,0.0,0.0
 2022,171,171,171,False,3,4482.6,25,True,40.0,False,1.12,False,428.0,0.0
 2022,224,224,224,True,6,7538.7,25,False,40.0,False,0.69,True,2451.0,123.30000000000001
