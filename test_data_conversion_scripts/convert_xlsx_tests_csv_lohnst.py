@@ -1,12 +1,11 @@
 from typing import TYPE_CHECKING
 
 import pandas as pd
-from _gettsim_tests import TEST_DATA_DIR
 
-if TYPE_CHECKING:
-    from pathlib import Path
+from pathlib import Path
 
 INPUT_COLS = [
+    "jahr",
     "hh_id",
     "tu_id",
     "p_id",
@@ -23,11 +22,11 @@ INPUT_COLS = [
 
 OUT_COLS = [
     "lohnst_m",
-    # "soli_st_lohnst_m"
+    "soli_st_lohnst_m"
 ]
 
 
-def convert(path: Path):
+def convert(path):
     # Loading BMF test data
     lst_data = pd.read_excel(
         path,
@@ -37,6 +36,8 @@ def convert(path: Path):
     # Drop test cases not covered by GETTSIM
 
     lst_data.columns = lst_data.columns.str.lower()
+    
+    lst_data["jahr"] = 2022
 
     lst_data = lst_data[
         (lst_data["af"] == 0)
@@ -64,6 +65,7 @@ def convert(path: Path):
         & (lst_data["vkapa"] == 0)
         & (lst_data["vmt"] == 0)
         & (lst_data["zmvb"] == 0)
+        & (lst_data["zkf"] == 0)
     ].copy()
 
     lst_data.head()
@@ -71,6 +73,7 @@ def convert(path: Path):
     # Only keep relevant variables and rename then to GETTSIM convention
     # lst_data.columns
     var_names = {
+        "jahr": "jahr",
         "lfd. nr.": "p_id",
         "stkl": "steuerklasse",
         "zkf": "anz_kinder_mit_kindergeld_tu",
@@ -145,8 +148,8 @@ def convert(path: Path):
     # (problem to solve when Soli is implemented)
     # test_data["eink_st_kinderfreib_tu"] = (
 
-    test_data[[*INPUT_COLS, *OUT_COLS]].to_csv("lohn_st_converted.csv", index=False)
+    test_data[[*INPUT_COLS, *OUT_COLS]].to_csv(Path(__file__).parent / ".." / "original_testfaelle" / "lohnst.csv", index=False)
 
 
 if __name__ == "__main__":
-    convert(TEST_DATA_DIR / "original_testfaelle" / "lohnsteuer_bmf_2022.xlsx")
+    convert(Path(__file__).parent / ".." / "original_testfaelle" / "lohnsteuer_bmf_2022.xlsx")
