@@ -27,9 +27,12 @@ OUT_COLS = [
 
 
 def convert(path):
+
+    jahr = 2021
     # Loading BMF test data
     lst_data = pd.read_excel(
         path,
+        sheet_name=f"{jahr}",
         header=9,
     )
 
@@ -37,7 +40,7 @@ def convert(path):
 
     lst_data.columns = lst_data.columns.str.lower()
     
-    lst_data["jahr"] = 2022
+    lst_data["jahr"] = jahr
 
     lst_data = lst_data[
         (lst_data["af"] == 0)
@@ -152,4 +155,4 @@ def convert(path):
 
 
 if __name__ == "__main__":
-    convert(Path(__file__).parent / ".." / "original_testfaelle" / "lohnsteuer_bmf_2022.xlsx")
+    convert(Path(__file__).parent / ".." / "original_testfaelle" / "lohnsteuer_bmf.xlsx")
