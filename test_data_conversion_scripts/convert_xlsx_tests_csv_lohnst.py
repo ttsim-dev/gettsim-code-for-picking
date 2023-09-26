@@ -28,7 +28,7 @@ OUT_COLS = [
 
 def convert(path):
 
-    jahr = 2021
+    jahr = 2022
     # Loading BMF test data
     lst_data = pd.read_excel(
         path,
@@ -108,6 +108,13 @@ def convert(path):
         "ges_pflegev_zusatz_kinderlos"
     ].astype(bool)
     test_data["in_ausbildung"] = False
+
+
+    if jahr == 2022:
+        test_data["in_ausbildung"] = False
+
+
+
 
     # Transform cent values to full Euros
     test_data["lst_wage"] = test_data["lst_wage"] / 100
