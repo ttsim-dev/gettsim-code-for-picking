@@ -109,13 +109,6 @@ def convert(path):
     ].astype(bool)
     test_data["in_ausbildung"] = False
 
-
-    if jahr == 2022:
-        test_data["in_ausbildung"] = False
-
-
-
-
     # Transform cent values to full Euros
     test_data["lst_wage"] = test_data["lst_wage"] / 100
     test_data["lohnst"] = test_data["lohnst"] / 100
