@@ -18,6 +18,7 @@ INPUT_COLS = [
     "in_ausbildung",
     "ges_krankenv_zusatzbeitr_satz",
     "ges_pflegev_zusatz_kinderlos",
+    "regulär_beschäftigt",
 ]
 
 OUT_COLS = [
@@ -28,7 +29,7 @@ OUT_COLS = [
 
 def convert(path):
 
-    jahr = 2022
+    jahr = 2015
     # Loading BMF test data
     lst_data = pd.read_excel(
         path,
@@ -94,7 +95,8 @@ def convert(path):
     test_data["tu_id"] = test_data["p_id"]
     test_data["hh_id"] = test_data["p_id"]
 
-    # Create variables needed for GETTSIM (not sure why GETTSIM requires them)
+    # Create variables needed for GETTSIM (not sure for every item 
+    # why GETTSIM requires them)
     test_data["alter"] = 25
     test_data.loc[test_data["wohnort_ost"] == 0, "wohnort_ost"] = False
     test_data.loc[test_data["wohnort_ost"] == 1, "wohnort_ost"] = True
@@ -108,6 +110,7 @@ def convert(path):
         "ges_pflegev_zusatz_kinderlos"
     ].astype(bool)
     test_data["in_ausbildung"] = False
+    test_data["regulär_beschäftigt"] = True
 
     # Transform cent values to full Euros
     test_data["lst_wage"] = test_data["lst_wage"] / 100

@@ -33,6 +33,7 @@ roles = {
             "in_ausbildung",
             "ges_krankenv_zusatzbeitr_satz",
             "ges_pflegev_zusatz_kinderlos",
+            "regulär_beschäftigt",
         ],
         "in_assumed": [
         ],
