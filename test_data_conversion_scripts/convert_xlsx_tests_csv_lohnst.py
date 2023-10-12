@@ -27,9 +27,12 @@ OUT_COLS = [
 
 
 def convert(path):
+
+    jahr = 2015
     # Loading BMF test data
     lst_data = pd.read_excel(
         path,
+        sheet_name=f"{jahr}",
         header=9,
     )
 
@@ -37,7 +40,7 @@ def convert(path):
 
     lst_data.columns = lst_data.columns.str.lower()
     
-    lst_data["jahr"] = 2022
+    lst_data["jahr"] = jahr
 
     lst_data = lst_data[
         (lst_data["af"] == 0)
@@ -91,7 +94,8 @@ def convert(path):
     test_data["tu_id"] = test_data["p_id"]
     test_data["hh_id"] = test_data["p_id"]
 
-    # Create variables needed for GETTSIM (not sure why GETTSIM requires them)
+    # Create variables needed for GETTSIM (not sure for every item 
+    # why GETTSIM requires them)
     test_data["alter"] = 25
     test_data.loc[test_data["wohnort_ost"] == 0, "wohnort_ost"] = False
     test_data.loc[test_data["wohnort_ost"] == 1, "wohnort_ost"] = True
@@ -105,6 +109,7 @@ def convert(path):
         "ges_pflegev_zusatz_kinderlos"
     ].astype(bool)
     test_data["in_ausbildung"] = False
+    test_data["regulär_beschäftigt"] = True
 
     # Transform cent values to full Euros
     test_data["lst_wage"] = test_data["lst_wage"] / 100
@@ -152,4 +157,4 @@ def convert(path):
 
 
 if __name__ == "__main__":
-    convert(Path(__file__).parent / ".." / "original_testfaelle" / "lohnsteuer_bmf_2022.xlsx")
+    convert(Path(__file__).parent / ".." / "original_testfaelle" / "lohnsteuer_bmf.xlsx")
