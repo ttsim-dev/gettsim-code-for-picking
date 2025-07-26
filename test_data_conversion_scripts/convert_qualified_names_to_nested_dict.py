@@ -3,15 +3,14 @@ This script converts qualified variable names in the test files to the regular t
 expected by GETTSIM.
 """
 
-from _gettsim_tests import TEST_DATA_DIR
+from _gettsim_tests import TEST_DIR
 import yaml
 from pathlib import Path
-import flatten_dict
-from _gettsim.shared import qualified_name_splitter
+import dags.tree as dt
 
 
 def collect_all_yaml_files() -> list[Path]:
-    return list((TEST_DATA_DIR).glob("**/*.yaml"))
+    return list((TEST_DIR / "test_data").glob("**/*.yaml"))
 
 
 def read_one_yaml_file(path: Path) -> dict:
@@ -58,20 +57,20 @@ def convert_qualified_names_to_tree(path: Path) -> None:
     unflattened_dict["inputs"] = {}
     unflattened_dict["outputs"] = {}
     if provided_inputs:
-        unflattened_dict["inputs"]["provided"] = flatten_dict.unflatten(
-            provided_inputs, splitter=qualified_name_splitter
+        unflattened_dict["inputs"]["provided"] = dt.unflatten_from_qual_names(
+            provided_inputs
         )
     else:
         unflattened_dict["inputs"]["provided"] = {}
     if assumed_inputs:
-        unflattened_dict["inputs"]["assumed"] = flatten_dict.unflatten(
-            assumed_inputs, splitter=qualified_name_splitter
+        unflattened_dict["inputs"]["assumed"] = dt.unflatten_from_qual_names(
+            assumed_inputs
         )
     else:
         unflattened_dict["inputs"]["assumed"] = {}
     
-    unflattened_dict["outputs"] = flatten_dict.unflatten(
-        test_dict["outputs"], splitter=qualified_name_splitter
+    unflattened_dict["outputs"] = dt.unflatten_from_qual_names(
+        test_dict["outputs"]
     )
     save_to_yaml(unflattened_dict, path)
 
@@ -83,4 +82,4 @@ if __name__ == "__main__":
             # Skip draft tests that are not properly formatted
             continue
         sort_one_test_dict_alphabetically(path)
-        #convert_qualified_names_to_tree(path)
+        convert_qualified_names_to_tree(path)
