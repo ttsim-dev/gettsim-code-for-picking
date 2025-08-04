@@ -1,8 +1,7 @@
-from typing import TYPE_CHECKING
-
-import pandas as pd
 
 from pathlib import Path
+
+import pandas as pd
 
 INPUT_COLS = [
     "jahr",
@@ -20,10 +19,7 @@ INPUT_COLS = [
     "ges_pflegev_zusatz_kinderlos",
 ]
 
-OUT_COLS = [
-    "lohnst_m",
-    "soli_st_lohnst_m"
-]
+OUT_COLS = ["lohnst_m", "soli_st_lohnst_m"]
 
 
 def convert(path):
@@ -39,7 +35,7 @@ def convert(path):
     # Drop test cases not covered by GETTSIM
 
     lst_data.columns = lst_data.columns.str.lower()
-    
+
     lst_data["jahr"] = jahr
 
     lst_data = lst_data[
@@ -94,7 +90,7 @@ def convert(path):
     test_data["tu_id"] = test_data["p_id"]
     test_data["hh_id"] = test_data["p_id"]
 
-    # Create variables needed for GETTSIM (not sure for every item 
+    # Create variables needed for GETTSIM (not sure for every item
     # why GETTSIM requires them)
     test_data["alter"] = 25
     test_data.loc[test_data["wohnort_ost"] == 0, "wohnort_ost"] = False
@@ -123,9 +119,9 @@ def convert(path):
     test_data.loc[test_data["period_of_obtained_wage"] == 3, "bruttolohn_m"] = (
         test_data["lst_wage"] / 7 * 360 / 12
     )
-    test_data.loc[
-        test_data["period_of_obtained_wage"] == 2, "bruttolohn_m"
-    ] = test_data["lst_wage"]
+    test_data.loc[test_data["period_of_obtained_wage"] == 2, "bruttolohn_m"] = (
+        test_data["lst_wage"]
+    )
     test_data.loc[test_data["period_of_obtained_wage"] == 1, "bruttolohn_m"] = (
         test_data["lst_wage"] / 12
     )
@@ -153,8 +149,12 @@ def convert(path):
     # (problem to solve when Soli is implemented)
     # test_data["eink_st_kinderfreib_tu"] = (
 
-    test_data[[*INPUT_COLS, *OUT_COLS]].to_csv(Path(__file__).parent / ".." / "original_testfaelle" / "lohnst.csv", index=False)
+    test_data[[*INPUT_COLS, *OUT_COLS]].to_csv(
+        Path(__file__).parent / ".." / "original_testfaelle" / "lohnst.csv", index=False
+    )
 
 
 if __name__ == "__main__":
-    convert(Path(__file__).parent / ".." / "original_testfaelle" / "lohnsteuer_bmf.xlsx")
+    convert(
+        Path(__file__).parent / ".." / "original_testfaelle" / "lohnsteuer_bmf.xlsx"
+    )
