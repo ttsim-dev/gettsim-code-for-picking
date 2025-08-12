@@ -4,6 +4,7 @@ GETTSIM parameters.
 It has to be run manually after any parameter is changed.
 
 """
+
 import pickle
 from datetime import date
 

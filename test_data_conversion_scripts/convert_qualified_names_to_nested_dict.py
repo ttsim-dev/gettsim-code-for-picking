@@ -3,10 +3,11 @@ This script converts qualified variable names in the test files to the regular t
 expected by GETTSIM.
 """
 
-from _gettsim_tests import TEST_DIR
-import yaml
 from pathlib import Path
+
 import dags.tree as dt
+import yaml
+from _gettsim_tests import TEST_DIR
 
 
 def collect_all_yaml_files() -> list[Path]:
@@ -14,9 +15,9 @@ def collect_all_yaml_files() -> list[Path]:
 
 
 def read_one_yaml_file(path: Path) -> dict:
-    with open(path, "r", encoding="utf-8") as file:
+    with open(path, encoding="utf-8") as file:
         return yaml.safe_load(file)
-    
+
 
 def save_to_yaml(sorted_dict: dict, path: Path) -> None:
     with open(path, "w", encoding="utf-8") as file:
@@ -25,10 +26,10 @@ def save_to_yaml(sorted_dict: dict, path: Path) -> None:
 
 def sort_one_test_dict_alphabetically(path: Path) -> None:
     test_dict = read_one_yaml_file(path)
-    
+
     assumed_inputs = test_dict["inputs"].get("assumed", {})
     provided_inputs = test_dict["inputs"].get("provided", {})
-    
+
     sorted_dict = {}
     sorted_dict["info"] = test_dict["info"]
     sorted_dict["inputs"] = {}
@@ -46,7 +47,7 @@ def sort_one_test_dict_alphabetically(path: Path) -> None:
 
 def sort_dict(unsorted_dict: dict) -> dict:
     return dict(sorted(unsorted_dict.items()))
-    
+
 
 def convert_qualified_names_to_tree(path: Path) -> None:
     test_dict = read_one_yaml_file(path)
@@ -68,10 +69,8 @@ def convert_qualified_names_to_tree(path: Path) -> None:
         )
     else:
         unflattened_dict["inputs"]["assumed"] = {}
-    
-    unflattened_dict["outputs"] = dt.unflatten_from_qual_names(
-        test_dict["outputs"]
-    )
+
+    unflattened_dict["outputs"] = dt.unflatten_from_qual_names(test_dict["outputs"])
     save_to_yaml(unflattened_dict, path)
 
 

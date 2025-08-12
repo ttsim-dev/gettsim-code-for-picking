@@ -1,11 +1,10 @@
-from typing import TYPE_CHECKING, Any, Optional
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
 import yaml
 from _gettsim_tests import TEST_DATA_DIR
-
-from pathlib import Path
 
 note_columns = [
     "note",
@@ -35,8 +34,7 @@ roles = {
             "ges_pflegev_zusatz_kinderlos",
             "regulär_beschäftigt",
         ],
-        "in_assumed": [
-        ],
+        "in_assumed": [],
         "out": [
             "lohnst_m",
             "soli_st_lohnst_m",
@@ -140,10 +138,12 @@ def value_to_string(value: Any) -> str:
 
 
 def write_yaml_to_file(
-    out: dict[str, dict], name: str, year: Optional[int] = None
+    out: dict[str, dict], name: str, year: int | None = None
 ) -> None:
     for hh_id, hh_dict in out.items():
-        text = yaml.dump(hh_dict, sort_keys=False, allow_unicode=True, indent=2, width=88)
+        text = yaml.dump(
+            hh_dict, sort_keys=False, allow_unicode=True, indent=2, width=88
+        )
         if year is None:
             path = TEST_DATA_DIR / name / f"{hh_id}.yaml"
         else:

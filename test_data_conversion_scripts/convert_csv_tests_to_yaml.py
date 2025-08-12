@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -162,10 +162,12 @@ def value_to_string(value: Any) -> str:
 
 
 def write_yaml_to_file(
-    out: dict[str, dict], name: str, year: Optional[int] = None
+    out: dict[str, dict], name: str, year: int | None = None
 ) -> None:
     for hh_id, hh_dict in out.items():
-        text = yaml.dump(hh_dict, sort_keys=False, allow_unicode=True, indent=2, width=88)
+        text = yaml.dump(
+            hh_dict, sort_keys=False, allow_unicode=True, indent=2, width=88
+        )
         if year is None:
             path = TEST_DATA_DIR / name / f"{hh_id}.yaml"
         else:
