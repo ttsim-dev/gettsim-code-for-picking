@@ -1,334 +1,20 @@
 """Performance comparison script for numpy vs jax backends."""
-import pandas as pd
-from gettsim import InputData, MainTarget, TTTargets, Labels, SpecializedEnvironment, RawResults
-
-# Hack: Override GETTSIM main to make all TTSIM parameters of main available in GETTSIM.
-# Necessary because of GETTSIM issue #1075. 
-# When resolved, this can be removed and gettsim.main can be used directly.
-from gettsim import germany
-import ttsim
-from ttsim.main_args import OrigPolicyObjects
-
-def main(**kwargs):
-    """Wrapper around ttsim.main that automatically sets the German root path and supports tt_function."""
-    # Set German tax system as default if no orig_policy_objects provided
-    if kwargs.get('orig_policy_objects') is None:
-        kwargs['orig_policy_objects'] = OrigPolicyObjects(root=germany.ROOT_PATH)
-    
-    return ttsim.main(**kwargs)
-
-import time
-import hashlib
 import json
-import os
-import psutil
-import gc
-import threading
+import hashlib
+import time
+import argparse
 from datetime import datetime
-from make_data import make_data
 
-# JAX-specific imports for cache management
-try:
-    import jax
-    JAX_AVAILABLE = True
-except ImportError:
-    JAX_AVAILABLE = False
+# Import shared benchmark configuration and utilities
+from benchmark_setup import (
+    main, TT_TARGETS, MAPPER, JAX_AVAILABLE,
+    sync_jax_if_needed, clear_jax_cache, get_memory_usage_mb, MemoryTracker,
+    force_garbage_collection, reset_session_state, BENCHMARK_HOUSEHOLD_SIZES, BACKENDS
+)
+from benchmark_make_data import make_data
 
-# %%
-TT_TARGETS = {
-    "einkommensteuer": {
-        "betrag_m_sn": "income_tax_m",
-        "zu_versteuerndes_einkommen_y_sn": "taxable_income_y_sn",
-    },
-    "sozialversicherung": {
-        "pflege": {
-            "beitrag": {
-                "betrag_versicherter_m": "long_term_care_insurance_contribution_m",
-            },
-        },
-        "kranken": {
-            "beitrag": {"betrag_versicherter_m": "health_insurance_contribution_m"},
-        },
-        "rente": {
-            "beitrag": {"betrag_versicherter_m": "pension_insurance_contribution_m"},
-            "entgeltpunkte_updated": "pension_entitlement_points_updated",
-            "grundrente": {
-                "gesamteinnahmen_aus_renten_für_einkommensberechnung_im_folgejahr_m": "pension_total_income_for_income_calculation_next_year_m",
-            },
-            "entgeltpunkte_updated": "pension_entitlement_points_updated",
-            "wartezeit_15_jahre_erfüllt": "pension_waiting_period_15_years_fulfilled",
-        },
-        "arbeitslosen": {
-            "mean_nettoeinkommen_für_bemessungsgrundlage_bei_arbeitslosigkeit_y": "mean_net_income_for_benefit_basis_in_case_of_unemployment_y",
-            "beitrag": {
-                "betrag_versicherter_m": "unemployment_insurance_contribution_m",
-            }
-        },
-        "pflege": {"beitrag": {"betrag_gesamt_in_gleitzone_m": "long_term_care_insurance_contribution_total_in_transition_zone_m"}},
-        "beiträge_gesamt_m": "social_insurance_contributions_total_m",
-    },
-    "kindergeld": {"betrag_m": "KG_betrag_m"},
-    "bürgergeld": {"betrag_m_bg": "BG_betrag_m_bg"},
-    "grundsicherung": {"im_alter": {"betrag_m_eg": "GS_betrag_m_eg"}},
-    "wohngeld": {"betrag_m_wthh": "WG_betrag_m_wthh"},
-    "kinderzuschlag": {
-        "betrag_m_bg": "KiZ_betrag_m_bg",
-    },
-    "familie": {"alleinerziehend_fg": "single_parent_fg"},
-    "elterngeld": {
-        "betrag_m": "EG_betrag_m",
-        "anrechenbarer_betrag_m": "EG_anrechenbarer_betrag_m",
-        "mean_nettoeinkommen_für_bemessungsgrundlage_nach_geburt_m": "EG_mean_nettoeinkommen_für_bemessungsgrundlage_nach_geburt_m"
-    },
-    "unterhalt": {
-        "tatsächlich_erhaltener_betrag_m": "unterhalt_tatsächlich_erhaltener_betrag_m",
-        "kind_festgelegter_zahlbetrag_m": "unterhalt_kind_festgelegter_zahlbetrag_m",
-    },
-    "unterhaltsvorschuss": {
-        "an_elternteil_auszuzahlender_betrag_m": "unterhaltsvorschuss_an_elternteil_auszuzahlender_betrag_m",
-    },
-}
-
-
-# %%
-MAPPER = {
-    "alter": "age",
-    "alter_monate": "alter_monate",
-    "geburtsmonat": 1,
-    "arbeitsstunden_w": "working_hours",
-    "behinderungsgrad": "disability_grade",
-    "schwerbehindert_grad_g": False,
-    "geburtsjahr": "birth_year",
-    "hh_id": "hh_id",
-    "p_id": "p_id",
-    "wohnort_ost_hh": "east_germany",
-    "einnahmen": {
-        "bruttolohn_m": 2000.0,
-        "kapitalerträge_y": 0.0,
-        "renten": {
-            "betriebliche_altersvorsorge_m": 0.0,
-            "geförderte_private_vorsorge_m": 0.0,
-            "gesetzliche_m": 0.0,
-            "sonstige_private_vorsorge_m": 0.0,
-        },
-    },
-    "einkommensteuer": {
-        "einkünfte": {
-            "ist_hauptberuflich_selbstständig": False,
-            "ist_selbstständig": "self_employed",
-            "aus_gewerbebetrieb": {"betrag_m": "income_from_self_employment"},
-            "aus_vermietung_und_verpachtung": {"betrag_m": "income_from_rent"},
-            "aus_nichtselbstständiger_arbeit": {
-                "bruttolohn_m": "income_from_employment"
-            },
-            "aus_forst_und_landwirtschaft": {
-                "betrag_m": "income_from_forest_and_agriculture"
-            },
-            "aus_selbstständiger_arbeit": {"betrag_m": "income_from_self_employment"},
-            "aus_kapitalvermögen": {"kapitalerträge_m": "income_from_capital"},
-            "sonstige": {
-                "alle_weiteren_y": 0.0,
-                "ohne_renten_m": "income_from_other_sources",
-                # "rente": {"ertragsanteil": 0.0},
-                "renteneinkünfte_m": "pension_income",
-            },
-        },
-        "abzüge": {
-            "beitrag_private_rentenversicherung_m": "contribution_to_private_pension_insurance",  # noqa: E501
-            "kinderbetreuungskosten_m": "childcare_expenses",
-            "p_id_kinderbetreuungskostenträger": "person_that_pays_childcare_expenses",
-        },
-        "gemeinsam_veranlagt": "joint_taxation",
-    },
-    "lohnsteuer": {"steuerklasse": "lohnsteuer__steuerklasse"},
-    "sozialversicherung": {
-        "arbeitslosen": {
-            # "betrag_m": 0.0
-            "mean_nettoeinkommen_in_12_monaten_vor_arbeitslosigkeit_m": 2000.0,
-            "arbeitssuchend": False,
-            "monate_beitragspflichtig_versichert_in_letzten_30_monaten": 30,
-            "monate_sozialversicherungspflichtiger_beschäftigung_in_letzten_5_jahren": 60,
-            "monate_durchgängigen_bezugs_von_arbeitslosengeld": 0,
-        },
-        "rente": {
-            "monat_renteneintritt": 1,
-            "jahr_renteneintritt": "jahr_renteneintritt",
-            "private_rente_betrag_m": "amount_private_pension_income",
-            "monate_in_arbeitsunfähigkeit": 0,
-            "krankheitszeiten_ab_16_bis_24_monate": 0.0,
-            "monate_in_mutterschutz": 0,
-            "monate_in_arbeitslosigkeit": 0,
-            "monate_in_ausbildungssuche": 0,
-            "monate_in_schulausbildung": 0,
-            "monate_mit_bezug_entgeltersatzleistungen_wegen_arbeitslosigkeit": 0,
-            "monate_geringfügiger_beschäftigung": 0,
-            "kinderberücksichtigungszeiten_monate": 0,
-            "pflegeberücksichtigungszeiten_monate": 0,
-            "erwerbsminderung": {
-                "voll_erwerbsgemindert": False,
-                "teilweise_erwerbsgemindert": False,
-            },
-            "altersrente": {
-                # "betrag_m": 0.0,
-            },
-            "grundrente": {
-                "grundrentenzeiten_monate": 0,
-                "bewertungszeiten_monate": 0,
-                "gesamteinnahmen_aus_renten_vorjahr_m": 0.0,
-                "mean_entgeltpunkte": 0.0,
-                "bruttolohn_vorjahr_y": 20000.0,
-                "einnahmen_aus_renten_vorjahr_y": 0.0,
-                "einnahmen_aus_kapitalvermögen_vorvorjahr_y": 0.0,
-                "einnahmen_aus_selbstständiger_arbeit_vorvorjahr_y": 0.0,
-                "einnahmen_aus_vermietung_und_verpachtung_vorvorjahr_y": 0.0,
-            },
-            "bezieht_rente": False,
-            "entgeltpunkte": 0.0,
-            "pflichtbeitragsmonate": 0,
-            "freiwillige_beitragsmonate": 0,
-            "ersatzzeiten_monate": 0,
-        },
-        "kranken": {
-            "beitrag": {"privat_versichert": "contribution_private_health_insurance"}
-        },
-        "pflege": {"beitrag": {"hat_kinder": "has_children"}},
-    },
-    "familie": {
-        "alleinerziehend": "single_parent",
-        "kind": "is_child",
-        "p_id_ehepartner": "spouse_id",
-        "p_id_elternteil_1": "parent_id_1",
-        "p_id_elternteil_2": "parent_id_2",
-    },
-    "wohnen": {
-        "bewohnt_eigentum_hh": False,
-        "bruttokaltmiete_m_hh": 900.0,
-        "heizkosten_m_hh": 150.0,
-        "wohnfläche_hh": 80.0,
-    },
-    "kindergeld": {
-        "in_ausbildung": "in_training",
-        "p_id_empfänger": "id_recipient_child_allowance",
-    },
-    "vermögen": 0.0,
-    "unterhalt": {
-        "tatsächlich_erhaltener_betrag_m": 0.0,
-        "anspruch_m": 0.0,
-    },
-    "elterngeld": {
-        # "betrag_m": 0.0,
-        # "anrechenbarer_betrag_m": 0.0,
-        "zu_versteuerndes_einkommen_vorjahr_y_sn": 30000.0,
-        "mean_nettoeinkommen_in_12_monaten_vor_geburt_m": 2000.0,
-        "claimed": False,
-        "bisherige_bezugsmonate": 0
-    },
-    "bürgergeld": {
-        # "betrag_m_bg": 0.0,
-        "p_id_einstandspartner": "bürgergeld__p_id_einstandspartner",
-        "bezug_im_vorjahr": False,
-    },
-    "wohngeld": {
-        # "betrag_m_wthh": 0.0,
-        "mietstufe_hh": 3,
-    },
-    "kinderzuschlag": {
-        # "betrag_m_bg": 0.0,
-    },
-}
-
-
-def sync_jax_if_needed(backend):
-    """Force JAX synchronization to ensure all operations are complete."""
-    if backend == "jax":
-        try:
-            import jax
-            # Force synchronization of all JAX operations
-            jax.block_until_ready(jax.numpy.array([1.0]))
-            print("    JAX operations synchronized")
-        except ImportError:
-            pass  # JAX not available, skip synchronization
-
-def clear_jax_cache():
-    """Clear JAX compilation cache to ensure clean state."""
-    if JAX_AVAILABLE:
-        try:
-            # Import jax locally to avoid issues
-            import jax as jax_local
-            # Clear all JAX caches
-            jax_local.clear_caches()
-            print("  JAX compilation cache cleared")
-        except Exception as e:
-            print(f"  Warning: Could not clear JAX cache: {e}")
-
-def force_garbage_collection():
-    """Force aggressive garbage collection between runs."""
-    gc.collect()
-    gc.collect()  # Run twice for good measure
-    print("  Garbage collection completed")
-
-def reset_session_state(backend):
-    """Reset session state between different backend runs."""
-    print(f"  Resetting session state for {backend} backend...")
-    
-    # Force garbage collection
-    force_garbage_collection()
-    
-    # Clear JAX-specific state if switching to/from JAX
-    if backend == "jax" or JAX_AVAILABLE:
-        clear_jax_cache()
-    
-    # Add a small delay to let system settle
-    time.sleep(0.5)
-
-def get_memory_usage_mb():
-    """Get current memory usage in MB."""
-    process = psutil.Process(os.getpid())
-    return process.memory_info().rss / 1024 / 1024
-
-class MemoryTracker:
-    """Track peak memory usage during execution with continuous monitoring."""
-    def __init__(self):
-        self.peak_memory = 0
-        self.process = psutil.Process(os.getpid())
-        self.monitoring = False
-        self.monitor_thread = None
-    
-    def start_monitoring(self):
-        """Start continuous memory monitoring in background thread."""
-        self.monitoring = True
-        self.peak_memory = self.get_current_memory()
-        self.monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
-        self.monitor_thread.start()
-    
-    def stop_monitoring(self):
-        """Stop continuous memory monitoring."""
-        self.monitoring = False
-        if self.monitor_thread:
-            self.monitor_thread.join(timeout=1.0)
-    
-    def _monitor_loop(self):
-        """Background monitoring loop."""
-        while self.monitoring:
-            current = self.get_current_memory()
-            if current > self.peak_memory:
-                self.peak_memory = current
-            time.sleep(0.01)  # Check every 10ms
-    
-    def get_current_memory(self):
-        """Get current memory usage in MB."""
-        return self.process.memory_info().rss / 1024 / 1024
-    
-    def update(self):
-        """Update peak memory if current usage is higher."""
-        current = self.get_current_memory()
-        if current > self.peak_memory:
-            self.peak_memory = current
-        return current
-    
-    def get_peak(self):
-        """Get peak memory usage in MB."""
-        return self.peak_memory
+# Import GETTSIM/TTSIM components
+from gettsim import InputData, MainTarget, TTTargets, Labels, SpecializedEnvironment, RawResults
 
 
 def run_benchmark(
@@ -336,6 +22,7 @@ def run_benchmark(
         save_memory_profile=False,
         reset_session=False,
         sync_jax=False,
+        scramble_data=False,
     ):
     """Run a single benchmark with 3-stage timing as in gettsim_profile_stages.py."""
     print(f"Running benchmark: {N_households:,} households, {backend} backend")
@@ -346,7 +33,7 @@ def run_benchmark(
     
     # Generate data
     print("  Generating data...")
-    data = make_data(N_households)
+    data = make_data(N_households, scramble_data=scramble_data)
     
     # Memory tracking setup
     tracker = MemoryTracker() if save_memory_profile else None
@@ -397,13 +84,18 @@ def run_benchmark(
         
         stage2_start = time.time()
 
-        raw_results__columns = main(
+        raw_results_stage2 = main(
             policy_date_str="2025-01-01",
-            main_target=MainTarget.raw_results.columns,
+            main_targets=[
+                MainTarget.raw_results.columns,
+                MainTarget.raw_results.params,
+                MainTarget.raw_results.from_input_data,
+            ],
             tt_targets=TTTargets(
                 tree=TT_TARGETS,
             ),
             processed_data=tmp["processed_data"],
+            input_data=InputData.flat(tmp["input_data"]["flat"]),  # Provide the flat input data from stage 1
             labels=Labels(root_nodes=tmp["labels"]["root_nodes"]),
             tt_function=tmp["tt_function"],  # Reuse pre-compiled JAX function
             include_fail_nodes=False,
@@ -418,8 +110,8 @@ def run_benchmark(
         stage2_end = time.time()
         stage2_time = stage2_end - stage2_start
 
-        # Generate hash for Stage 2 output (raw_results__columns)
-        stage2_hash = hashlib.md5(str(raw_results__columns).encode('utf-8')).hexdigest()
+        # Generate hash for Stage 2 output (raw_results_stage2)
+        stage2_hash = hashlib.md5(str(raw_results_stage2).encode('utf-8')).hexdigest()
 
         # STAGE 3: Convert raw results to DataFrame (no computation, just formatting)
         print("  Stage 3: Convert raw results to DataFrame...")
@@ -431,7 +123,7 @@ def run_benchmark(
             tt_targets=TTTargets(
                 tree=TT_TARGETS,
             ),
-            raw_results=RawResults.columns(raw_results__columns),
+            raw_results=raw_results_stage2["raw_results"],
             input_data=InputData.flat(tmp["input_data"]["flat"]),  # Provide the flat input data from stage 1
             processed_data=tmp["processed_data"],
             labels=Labels(root_nodes=tmp["labels"]["root_nodes"]),
@@ -458,67 +150,58 @@ def run_benchmark(
         final_memory = get_memory_usage_mb()
         if tracker:
             tracker.stop_monitoring()
-        
-        # Determine result shape and type
-        if hasattr(result, 'shape'):
-            result_shape = result.shape
+            peak_memory = tracker.get_peak()
         else:
-            result_shape = getattr(result, 'shape', None)
+            peak_memory = final_memory
+
+        # Calculate memory delta
+        memory_delta = final_memory - initial_memory
         
-        print(f"  ✓ Stage 1 (pre-processing): {stage1_time:.4f}s ({stage1_time/total_time*100:.1f}%)")
-        print(f"  ✓ Stage 2 (computation): {stage2_time:.4f}s ({stage2_time/total_time*100:.1f}%)")
-        print(f"  ✓ Stage 3 (post-processing): {stage3_time:.4f}s ({stage3_time/total_time*100:.1f}%)")
-        print(f"  ✓ Total time: {total_time:.4f} seconds")
-        if result_shape:
-            print(f"  Result shape: {result_shape}")
-        else:
-            print(f"  Result type: {type(result)}")
-        print(f"  Memory usage: {initial_memory:.1f} MB → {final_memory:.1f} MB (Δ{final_memory-initial_memory:+.1f} MB)")
-        print(f"  Stage 1 hash: {stage1_hash[:16]}...")
-        print(f"  Stage 2 hash: {stage2_hash[:16]}...")
-        print(f"  Stage 3 hash: {stage3_hash[:16]}...")
+        # Results shape
+        result_shape = result.shape if hasattr(result, 'shape') else 'N/A'
+        
+        print(f"  Stage 1: {stage1_time:.4f}s ({stage1_time/total_time*100:.1f}%)")
+        print(f"  Stage 2: {stage2_time:.4f}s ({stage2_time/total_time*100:.1f}%)")
+        print(f"  Stage 3: {stage3_time:.4f}s ({stage3_time/total_time*100:.1f}%)")
+        print(f"  Total: {total_time:.4f}s")
+        print(f"  Result shape: {result_shape}")
+        print(f"  Memory: {initial_memory:.1f} -> {final_memory:.1f} MB (Δ{memory_delta:+.1f}, peak: {peak_memory:.1f})")
         
         return {
             'stage1_time': stage1_time,
             'stage2_time': stage2_time,
             'stage3_time': stage3_time,
-            'execution_time': total_time,  # Keep for backwards compatibility
+            'execution_time': total_time,
             'stage1_hash': stage1_hash,
             'stage2_hash': stage2_hash,
             'stage3_hash': stage3_hash,
             'initial_memory': initial_memory,
             'final_memory': final_memory,
-            'memory_delta': final_memory - initial_memory,
+            'peak_memory': peak_memory,
+            'memory_delta': memory_delta,
             'result_shape': result_shape,
-            'memory_tracker': tracker,
-            'peak_memory': tracker.get_peak() if tracker else final_memory
+            'backend': backend,
+            'N_households': N_households,
         }
         
     except Exception as e:
-        print(f"  ✗ Failed: {str(e)}")
+        print(f"  ERROR: {e}")
         if tracker:
             tracker.stop_monitoring()
-        return {
-            'stage1_time': None,
-            'stage2_time': None,
-            'stage3_time': None,
-            'execution_time': None,
-            'result_hash': None,
-            'initial_memory': initial_memory,
-            'final_memory': get_memory_usage_mb(),
-            'memory_delta': None,
-            'result_shape': None,
-            'memory_tracker': tracker,
-            'peak_memory': tracker.get_peak() if tracker else get_memory_usage_mb(),
-            'error': str(e)
-        }
+        return None
 
-if __name__ == "__main__":
+
+def main_cli():
+    """Main function for command line interface."""
+    parser = argparse.ArgumentParser(description='Run GETTSIM performance benchmarks')
+    parser.add_argument('-scramble', '--scramble-data', action='store_true',
+                        help='Scramble data to create unsorted p_id order (default: sorted)')
+    
+    args = parser.parse_args()
+    
     # Dataset sizes (number of households)
-    household_sizes = [2**15-1, 2**15, 2**16, 2**17, 2**18, 2**19, 2**20]
-    # household_sizes = [2**21] # for testing purposes
-    backends = ["numpy", "jax"]
-    # backends = ["numpy"]
+    household_sizes = BENCHMARK_HOUSEHOLD_SIZES
+    backends = BACKENDS
     
     results = {}
     
@@ -526,12 +209,17 @@ if __name__ == "__main__":
     results["metadata"] = {
         "timestamp": datetime.now().isoformat(),
         "household_sizes": household_sizes,
-        "backends": backends
+        "backends": backends,
+        "scrambled_data": args.scramble_data
     }
     
     for backend in backends:
         print(f"\n{'='*60}")
         print(f"Testing {backend} backend")
+        if args.scramble_data:
+            print("Data scrambling: ENABLED (unsorted p_id order)")
+        else:
+            print("Data scrambling: DISABLED (sorted p_id order)")
         print(f"{'='*60}")
         
         # Clear all caches and reset session before starting new backend
@@ -548,6 +236,7 @@ if __name__ == "__main__":
                 reset_session=False, # reset_between_sizes (no impact on results)
                 sync_jax=True,  # Set to True if you want to force JAX synchronization
                                 # Seems necessary for realistic (reported time = wall clock time) JAX timings
+                scramble_data=args.scramble_data,
             )
             if result and result.get('execution_time'):
                 # Store all stage timing data
@@ -579,18 +268,22 @@ if __name__ == "__main__":
         
         # Comprehensive cleanup after completing all sizes for this backend
         print(f"Completing {backend} backend tests...")
-        # reset_session_state(backend)
         print(f"{backend} backend tests completed with full cleanup")
     
     # Save results to JSON file
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"benchmark_results_{timestamp}.json"
+    scramble_suffix = "_scrambled" if args.scramble_data else "_sorted"
+    filename = f"benchmark_results_{timestamp}{scramble_suffix}.json"
     with open(filename, 'w') as f:
         json.dump(results, f, indent=2)
     print(f"\nResults saved to: {filename}")
     
     print(f"\n{'='*120}")
     print("3-STAGE TIMING BREAKDOWN")
+    if args.scramble_data:
+        print("Data ordering: SCRAMBLED (unsorted p_id)")
+    else:
+        print("Data ordering: SORTED (sequential p_id)")
     print(f"{'='*120}")
     
     # Print comparison table in the requested format
@@ -611,9 +304,6 @@ if __name__ == "__main__":
         jax_s2 = results.get(f"{N_households}_jax_stage2_time")
         jax_s3 = results.get(f"{N_households}_jax_stage3_time")
         jax_total = results.get(f"{N_households}_jax_time")
-        
-        numpy_hash = results.get(f"{N_households}_numpy_hash")
-        jax_hash = results.get(f"{N_households}_jax_hash")
         
         # Get stage-specific hashes
         numpy_s1_hash = results.get(f"{N_households}_numpy_stage1_hash")
@@ -716,13 +406,16 @@ if __name__ == "__main__":
     print("\nLegend:")
     print("  Stage 1: Data preprocessing & DAG creation")
     print("  Stage 2: Core computation (tax/transfer calculations)")
-    print("  Stage 3: DataFrame formatting (JAX → pandas conversion)")
+    print("  Stage 3: Preparing results DataFrame")
     print("  Init/Final: Memory usage before/after execution")
     print("  Δ: Memory increase during execution")
-    print("  ✓/✗: Hash verification (results match/differ)")
     
     print(f"\n{'='*120}")
     print("BENCHMARK COMPLETED")
     print(f"{'='*120}")
     print(f"Results saved to: {filename}")
     print(f"Generated at: {datetime.now().isoformat()}")
+
+
+if __name__ == "__main__":
+    main_cli()

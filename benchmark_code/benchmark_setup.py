@@ -1,29 +1,35 @@
 """
-GETTSIM Profiling Script
+Shared configuration and utilities for GETTSIM/TTSIM benchmarking.
 
-This script profiles GETTSIM/TTSIM with synthetic data.
-It supports both JAX and NumPy backends.
-
-Usage:
-    python gettsim_profile.py -N 32768 -b numpy (without profile)
-    py-spy record -o profile.svg -- python gettsim_profile.py -N 32768 -b numpy (with profile)
-
+This module contains all the shared constants, configurations, and utility functions
+used by both benchmark.py and benchmark_profile.py to eliminate code duplication.
 """
 
-
-# %%
-import pandas as pd
+import gc
+import os
 import time
-import argparse
-import hashlib
-from gettsim import InputData, MainTarget, TTTargets, Labels, SpecializedEnvironment, RawResults
+import threading
+import psutil
+from datetime import datetime
 
-# Hack: Override GETTSIM main to make all TTSIM parameters of main available in GETTSIM.
-# Necessary because of GETTSIM issue #1075. 
-# When resolved, this can be removed and gettsim.main can be used directly.
+# Import GETTSIM/TTSIM components
+from gettsim import InputData, MainTarget, TTTargets, Labels, SpecializedEnvironment, RawResults
 from gettsim import germany
 import ttsim
 from ttsim.main_args import OrigPolicyObjects
+
+# JAX-specific imports for cache management
+try:
+    import jax
+    import jax.numpy as jnp
+    JAX_AVAILABLE = True
+except ImportError:
+    JAX_AVAILABLE = False
+
+
+# =============================================================================
+# GETTSIM MAIN WRAPPER
+# =============================================================================
 
 def main(**kwargs):
     """Wrapper around ttsim.main that automatically sets the German root path and supports tt_function."""
@@ -33,12 +39,11 @@ def main(**kwargs):
     
     return ttsim.main(**kwargs)
 
-from make_data import make_data
 
+# =============================================================================
+# TAX-TRANSFER TARGETS CONFIGURATION
+# =============================================================================
 
-
-
-# %%
 TT_TARGETS = {
     "einkommensteuer": {
         "betrag_m_sn": "income_tax_m",
@@ -94,7 +99,10 @@ TT_TARGETS = {
 }
 
 
-# %%
+# =============================================================================
+# INPUT DATA MAPPER CONFIGURATION
+# =============================================================================
+
 MAPPER = {
     "alter": "age",
     "alter_monate": "alter_monate",
@@ -241,9 +249,14 @@ MAPPER = {
     },
 }
 
+
+# =============================================================================
+# JAX UTILITIES
+# =============================================================================
+
 def sync_jax_if_needed(backend):
     """Force JAX synchronization to ensure all operations are complete."""
-    if backend == "jax":
+    if backend == "jax" and JAX_AVAILABLE:
         try:
             import jax
             # Force synchronization of all JAX operations
@@ -255,164 +268,101 @@ def sync_jax_if_needed(backend):
             print(f"  Warning: JAX sync failed: {e}")
 
 
-def run_profile(N, backend):
-    """Run GETTSIM profiling with specified parameters."""
-    print(f"Generating dataset with {N:,} households...")
-    data = make_data(N)
-    print(f"Dataset created successfully. Shape: {data.shape}")
+def clear_jax_cache():
+    """Clear JAX compilation cache to ensure clean state."""
+    if JAX_AVAILABLE:
+        try:
+            import jax
+            # Clear the JIT compilation cache
+            jax.clear_caches()
+            print("  JAX cache cleared")
+        except Exception as e:
+            print(f"  Warning: JAX cache clear failed: {e}")
+
+
+# =============================================================================
+# MEMORY TRACKING
+# =============================================================================
+
+def get_memory_usage_mb():
+    """Get current memory usage in MB."""
+    process = psutil.Process(os.getpid())
+    return process.memory_info().rss / 1024 / 1024
+
+
+class MemoryTracker:
+    """Track peak memory usage during execution with continuous monitoring."""
+    def __init__(self):
+        self.peak_memory = 0
+        self.process = psutil.Process(os.getpid())
+        self.monitoring = False
+        self.monitor_thread = None
     
-    print(f"Running GETTSIM with backend: {backend}")
+    def start_monitoring(self):
+        """Start continuous memory monitoring in background thread."""
+        self.monitoring = True
+        self.peak_memory = self.get_current_memory()
+        self.monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
+        self.monitor_thread.start()
     
-    # First stage - preprocessing and DAG creation
-    print("\n=== STAGE 1: Data preprocessing and DAG creation ===")
-    stage1_start = time.time()
-
-    tmp = main(
-        policy_date_str="2025-01-01",
-        input_data=InputData.df_and_mapper(
-            df=data,
-            mapper=MAPPER,
-        ),
-        main_targets=[
-            MainTarget.specialized_environment.tt_dag,
-            MainTarget.processed_data,
-            MainTarget.labels.root_nodes,
-            MainTarget.input_data.flat,  # Need this for stage 3
-            MainTarget.tt_function, # Use compiled tt_function in stage 2 with JAX backend
-        ],
-        tt_targets=TTTargets(
-            tree=TT_TARGETS,
-        ),
-        include_fail_nodes=True,
-        include_warn_nodes=False,
-        backend=backend,
-    )    
-
-    # Force JAX synchronization before recording end time
-    sync_jax_if_needed(backend)
+    def stop_monitoring(self):
+        """Stop continuous memory monitoring."""
+        self.monitoring = False
+        if self.monitor_thread:
+            self.monitor_thread.join(timeout=1.0)
     
-    stage1_end = time.time()
-    stage1_time = stage1_end - stage1_start
+    def _monitor_loop(self):
+        """Background monitoring loop."""
+        while self.monitoring:
+            self.update()
+            time.sleep(0.01)  # Check every 10ms
     
-    # Generate hash for Stage 1 output (tmp) - avoid memory issues with large arrays
-    stage1_hash = hashlib.md5(str(tmp).encode('utf-8')).hexdigest()
-
-    print(f"Stage 1 completed in: {stage1_time:.4f} seconds")
-    print(f"Processed data keys: {len(tmp['processed_data'])}")
-    print(f"DAG nodes: {len(tmp['specialized_environment']['tt_dag'])}")
-    print(f"Stage 1 hash: {stage1_hash[:16]}...")
-
-    # Second stage - computation only (no data preprocessing)
-    print("\n=== STAGE 2: Computation only (no preprocessing) ===")
-    print(f"Wall clock time: {time.strftime('%H:%M:%S')} - Starting Stage 2")
-    stage2_start = time.time()
-
-    raw_results__columns = main(
-        policy_date_str="2025-01-01",
-        main_target=MainTarget.raw_results.columns,
-        tt_targets=TTTargets(
-            tree=TT_TARGETS,
-        ),
-        processed_data=tmp["processed_data"],
-        labels=Labels(root_nodes=tmp["labels"]["root_nodes"]),
-        tt_function=tmp["tt_function"],  # Reuse pre-compiled JAX function
-        include_fail_nodes=True,
-        include_warn_nodes=False,
-        backend=backend,
-    )
-
-    # Force JAX synchronization before recording end time
-    sync_jax_if_needed(backend)
-
-    stage2_end = time.time()
-    print(f"Wall clock time: {time.strftime('%H:%M:%S')} - Completed Stage 2")
-    stage2_time = stage2_end - stage2_start
+    def get_current_memory(self):
+        """Get current memory usage in MB."""
+        return self.process.memory_info().rss / 1024 / 1024
     
-    # Generate hash for Stage 2 output - avoid memory issues with large JAX arrays
-    stage2_hash = hashlib.md5(str(raw_results__columns).encode('utf-8')).hexdigest()
+    def update(self):
+        """Update peak memory if current usage is higher."""
+        current = self.get_current_memory()
+        if current > self.peak_memory:
+            self.peak_memory = current
+        return current
     
-    print(f"Stage 2 completed in: {stage2_time:.4f} seconds")
-    print(f"Raw results keys: {len(raw_results__columns)}")
-    print(f"Stage 2 hash: {stage2_hash[:16]}...")
-
-    # Third stage - convert raw results to DataFrame (no computation, just formatting)
-    print("\n=== STAGE 3: Convert raw results to DataFrame ===")
-    print(f"Wall clock time: {time.strftime('%H:%M:%S')} - Starting Stage 3")
-    stage3_start = time.time()
-
-    final_results = main(
-        policy_date_str="2025-01-01",
-        main_target=MainTarget.results.df_with_mapper,
-        tt_targets=TTTargets(
-            tree=TT_TARGETS,
-        ),
-        raw_results=RawResults.columns(raw_results__columns),
-        input_data=InputData.flat(tmp["input_data"]["flat"]),  # Provide the flat input data from stage 1
-        processed_data=tmp["processed_data"],
-        labels=Labels(root_nodes=tmp["labels"]["root_nodes"]),
-        specialized_environment=SpecializedEnvironment(
-            tt_dag=tmp["specialized_environment"]["tt_dag"]
-        ),
-        include_fail_nodes=True,
-        include_warn_nodes=False,
-        backend=backend,
-    )
-
-    # Force JAX synchronization before recording end time
-    sync_jax_if_needed(backend)
-
-    stage3_end = time.time()
-    print(f"Wall clock time: {time.strftime('%H:%M:%S')} - Completed Stage 3")
-    stage3_time = stage3_end - stage3_start
-    total_time = stage1_time + stage2_time + stage3_time
-    
-    # Generate hash for Stage 3 output - avoid memory issues
-    stage3_hash = hashlib.md5(str(final_results).encode('utf-8')).hexdigest()
-    
-    print(f"Stage 3 completed in: {stage3_time:.4f} seconds")
-    print(f"Final DataFrame shape: {final_results.shape if hasattr(final_results, 'shape') else 'N/A'}")
-    print(f"Final DataFrame type: {type(final_results)}")
-    print(f"Stage 3 hash: {stage3_hash[:16]}...")
-    print(f"Total execution time: {total_time:.4f} seconds")
-    print(f"Stage 1 (preprocessing): {stage1_time:.4f}s ({stage1_time/total_time*100:.1f}%)")
-    print(f"Stage 2 (computation): {stage2_time:.4f}s ({stage2_time/total_time*100:.1f}%)")
-    print(f"Stage 3 (formatting): {stage3_time:.4f}s ({stage3_time/total_time*100:.1f}%)")
-    print(f"Backend: {backend}")
-    print(f"Households: {N:,}")
-    print(f"People: {len(data):,}")
-    print(f"Performance: {N / total_time:.0f} households/second")
-    print("\n=== STAGE HASHES ===")
-    print(f"Stage 1 hash: {stage1_hash[:16]}...")
-    print(f"Stage 2 hash: {stage2_hash[:16]}...")
-    print(f"Stage 3 hash: {stage3_hash[:16]}...")
-    
-    return final_results, total_time
+    def get_peak(self):
+        """Get peak memory usage in MB."""
+        return self.peak_memory
 
 
-def main_cli():
-    """Main function for command line interface."""
-    parser = argparse.ArgumentParser(description='Profile GETTSIM with synthetic data')
-    parser.add_argument('-N', '--households', type=int, default=32768,
-                        help='Number of households to generate (default: 32768)')
-    parser.add_argument('-b', '--backend', choices=['numpy', 'jax'], default='numpy',
-                        help='Backend to use: numpy or jax (default: numpy)')
-    
-    args = parser.parse_args()
-    
-    print("GETTSIM Profiling Tool")
-    print("=" * 50)
-    
-    result, exec_time = run_profile(args.households, args.backend)
-    
-    print("\n" + "=" * 50)
-    print("Profiling completed successfully!")
-    
-    return result, exec_time
+# =============================================================================
+# SESSION MANAGEMENT
+# =============================================================================
+
+def force_garbage_collection():
+    """Force aggressive garbage collection between runs."""
+    gc.collect()
+    gc.collect()  # Run twice for good measure
+    print("  Garbage collection completed")
 
 
-if __name__ == "__main__":
-    main_cli()
+def reset_session_state(backend):
+    """Reset session state between different backend runs."""
+    print(f"  Resetting session state for {backend} backend...")
+    
+    # Force garbage collection
+    force_garbage_collection()
+    
+    # Clear JAX-specific state if switching to/from JAX
+    if backend == "jax" or JAX_AVAILABLE:
+        clear_jax_cache()
+    
+    # Add a small delay to let system settle
+    time.sleep(0.5)
 
-# %%
-# For interactive use - you can also run this directly
-# result, exec_time = run_profile(N=32768, backend="numpy")
+
+# =============================================================================
+# COMMON DATASET SIZES
+# =============================================================================
+
+BENCHMARK_HOUSEHOLD_SIZES = [2**15-1, 2**15, 2**16, 2**17, 2**18, 2**19, 2**20]
+PROFILE_HOUSEHOLD_SIZES = [2**15]  # Default for profiling: 32,768 households
+BACKENDS = ["numpy", "jax"]
