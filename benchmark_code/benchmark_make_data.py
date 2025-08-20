@@ -1,6 +1,8 @@
 """
 Script to generate synthetic datasets for GETTSIM benchmarking/profiling.
 
+This module provides the make_data function to create standardized synthetic
+datasets for GETTSIM/TTSIM performance testing.
 """
 # %%
 
@@ -8,13 +10,15 @@ import pandas as pd
 import numpy as np
 import time
 
-def make_data(N):
+def make_data(N, scramble_data=False):
     """
     Create a DataFrame with N households, each containing 2 parents and 2 children.
     Uses vectorized operations for fast data generation.
     
     Parameters:
     N (int): Number of households to create
+    scramble_data (bool): Whether to randomly shuffle rows to create unsorted p_id order.
+                         Default is False to maintain sorted order for better performance.
     
     Returns:
     pd.DataFrame: DataFrame with household data (4*N rows)
@@ -101,7 +105,17 @@ def make_data(N):
     for col in int_columns:
         data[col] = data[col].astype(int)
     
-    print(f"Created DataFrame with {len(data)} rows ({len(data) // 4} households)")
+    # SCRAMBLE DATA: Optionally shuffle rows to create unsorted p_id order
+    if scramble_data:
+        np.random.seed(42)  # Fixed seed for reproducible results
+        scrambled_indices = np.random.permutation(len(data))
+        data = data.iloc[scrambled_indices].reset_index(drop=True)
+        print(f"Created DataFrame with {len(data)} rows ({len(data) // 4} households)")
+        print(f"Data scrambled: p_id order is now unsorted")
+    else:
+        print(f"Created DataFrame with {len(data)} rows ({len(data) // 4} households)")
+        print(f"Data kept sorted: p_id order is sequential")
+    
     return data
 
 
@@ -154,5 +168,6 @@ if __name__ == "__main__":
 
 # %%
 # For inspection:
-# example_data = make_data(3)  # 3 households = 12 people
+# example_data = make_data(3)  # 3 households = 12 people (sorted)
+# example_scrambled = make_data(3, scramble_data=True)  # 3 households = 12 people (scrambled)
 

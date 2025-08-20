@@ -73,8 +73,8 @@ def print_jax_comparison_table(main_results, pr_results, household_sizes):
         pr_s3_hash = pr_results.get(f"{N_households}_jax_stage3_hash")
         
         # Check hash matches for each stage
-        # Stage 1 hashes are intentionally omitted due to instability, so show empty
-        s1_hash_match = ""
+        # Stage 1 hashes are intentionally omitted due to unstable dict returns
+        s1_hash_match = "N/A"
         s2_hash_match = "✓" if main_s2_hash == pr_s2_hash else "✗" if main_s2_hash and pr_s2_hash else "N/A"
         s3_hash_match = "✓" if main_s3_hash == pr_s3_hash else "✗" if main_s3_hash and pr_s3_hash else "N/A"
         
@@ -139,8 +139,8 @@ def print_numpy_comparison_table(main_results, pr_results, household_sizes):
         pr_s3_hash = pr_results.get(f"{N_households}_numpy_stage3_hash")
         
         # Check hash matches for each stage
-        # Stage 1 hashes are intentionally omitted due to instability, so show empty
-        s1_hash_match = ""
+        # Stage 1 hashes are intentionally omitted due to unstable dict returns
+        s1_hash_match = "N/A"
         s2_hash_match = "✓" if main_s2_hash == pr_s2_hash else "✗" if main_s2_hash and pr_s2_hash else "N/A"
         s3_hash_match = "✓" if main_s3_hash == pr_s3_hash else "✗" if main_s3_hash and pr_s3_hash else "N/A"
         
@@ -244,25 +244,31 @@ def print_summary_statistics(main_results, pr_results, household_sizes):
             stage_hash_results[stage_num] = (hash_mismatches, total_comparisons)
         
         # Print hash verification results
-        all_stages_perfect = True
+        meaningful_mismatches = False  # Track mismatches in stages 2 and 3 only
         for stage_num in [1, 2, 3]:
             hash_mismatches, total_comparisons = stage_hash_results[stage_num]
             stage_name = {1: "Stage 1", 2: "Stage 2", 3: "Stage 3"}[stage_num]
             
             if total_comparisons > 0:
-                print(f"  {stage_name} hash verification: {hash_mismatches}/{total_comparisons} mismatches")
-                if hash_mismatches > 0:
-                    all_stages_perfect = False
+                if stage_num == 1:
+                    # Stage 1 hash mismatches are expected due to unstable dict returns
+                    print(f"  {stage_name} hash verification: {hash_mismatches}/{total_comparisons} mismatches (expected - unstable dict)")
+                else:
+                    print(f"  {stage_name} hash verification: {hash_mismatches}/{total_comparisons} mismatches")
+                    if hash_mismatches > 0:
+                        meaningful_mismatches = True
             else:
                 print(f"  {stage_name} hash verification: No valid comparisons available")
-                all_stages_perfect = False
         
-        if all_stages_perfect and any(total for _, total in stage_hash_results.values()):
-            print(f"  ✓ All stage results are numerically identical")
-        elif any(mismatches for mismatches, _ in stage_hash_results.values()):
-            print(f"  ⚠ Some stage results differ between main and PR")
+        # Only show warning for meaningful mismatches (stages 2 and 3)
+        stages_2_3_have_data = any(total for stage_num, (_, total) in stage_hash_results.items() if stage_num in [2, 3])
+        
+        if meaningful_mismatches:
+            print(f"  ⚠ Stage 2/3 results differ between main and PR - investigate numerical differences")
+        elif stages_2_3_have_data:
+            print(f"  ✓ All meaningful stage results are numerically identical (Stage 2 & 3)")
         else:
-            print(f"  No valid hash comparisons available")
+            print(f"  No valid hash comparisons available for meaningful stages")
     
     # Overall comparison
     print(f"\n{'='*100}")
