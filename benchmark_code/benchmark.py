@@ -19,7 +19,6 @@ from gettsim import InputData, MainTarget, TTTargets, Labels, SpecializedEnviron
 
 def run_benchmark(
         N_households, backend,
-        save_memory_profile=False,
         reset_session=False,
         sync_jax=False,
         scramble_data=False,
@@ -35,13 +34,12 @@ def run_benchmark(
     print("  Generating data...")
     data = make_data(N_households, scramble_data=scramble_data)
     
-    # Memory tracking setup
-    tracker = MemoryTracker() if save_memory_profile else None
+    # Memory tracking setup - always track peak memory for benchmarking
+    tracker = MemoryTracker()
     
     # Initial memory reading
     initial_memory = get_memory_usage_mb()
-    if tracker:
-        tracker.start_monitoring()
+    tracker.start_monitoring()
     
     try:
         # STAGE 1: Data preprocessing and DAG creation
@@ -64,7 +62,7 @@ def run_benchmark(
             tt_targets=TTTargets(
                 tree=TT_TARGETS,
             ),
-            include_fail_nodes=False,
+            include_fail_nodes=True,
             include_warn_nodes=False,
             backend=backend,
         )    
@@ -148,11 +146,8 @@ def run_benchmark(
         
         # Final memory reading
         final_memory = get_memory_usage_mb()
-        if tracker:
-            tracker.stop_monitoring()
-            peak_memory = tracker.get_peak()
-        else:
-            peak_memory = final_memory
+        tracker.stop_monitoring()
+        peak_memory = tracker.get_peak()
 
         # Calculate memory delta
         memory_delta = final_memory - initial_memory
@@ -186,8 +181,7 @@ def run_benchmark(
         
     except Exception as e:
         print(f"  ERROR: {e}")
-        if tracker:
-            tracker.stop_monitoring()
+        tracker.stop_monitoring()
         return None
 
 
@@ -381,34 +375,37 @@ def main_cli():
             print("-" * 104)
     
     # Print memory comparison
-    print(f"\n{'='*120}")
+    print(f"\n{'='*140}")
     print("MEMORY USAGE COMPARISON")
-    print(f"{'='*120}")
-    print(f"{'Households':<12}{'NumPy Init':<12}{'NumPy Final':<12}{'JAX Init':<12}{'JAX Final':<12}{'NumPy Δ':<12}{'JAX Δ':<12}")
-    print("-" * 120)
+    print(f"{'='*140}")
+    print(f"{'Households':<12}{'NumPy Init':<12}{'NumPy Final':<13}{'NumPy Δ':<12}{'NumPy Peak':<13}{'JAX Init':<12}{'JAX Final':<12}{'JAX Δ':<12}{'JAX Peak':<12}")
+    print("-" * 140)
     
     for N_households in household_sizes:
         numpy_init = results.get(f"{N_households}_numpy_initial_memory")
         numpy_final = results.get(f"{N_households}_numpy_final_memory")
+        numpy_delta = results.get(f"{N_households}_numpy_memory_delta")
+        numpy_peak = results.get(f"{N_households}_numpy_peak_memory")
         jax_init = results.get(f"{N_households}_jax_initial_memory")
         jax_final = results.get(f"{N_households}_jax_final_memory")
-        numpy_delta = results.get(f"{N_households}_numpy_memory_delta")
         jax_delta = results.get(f"{N_households}_jax_memory_delta")
+        jax_peak = results.get(f"{N_households}_jax_peak_memory")
         
         # Helper function to format memory values
         def format_memory(value):
             return f"{value:.1f}" if value is not None else "FAILED"
         
         # Show memory data even if only one backend succeeded
-        print(f"{N_households:<12,}{format_memory(numpy_init):<12}{format_memory(numpy_final):<12}{format_memory(jax_init):<12}{format_memory(jax_final):<12}{format_memory(numpy_delta):<12}{format_memory(jax_delta):<12}")
+        print(f"{N_households:<12,}{format_memory(numpy_init):<12}{format_memory(numpy_final):<13}{format_memory(numpy_delta):<12}{format_memory(numpy_peak):<13}{format_memory(jax_init):<12}{format_memory(jax_final):<12}{format_memory(jax_delta):<12}{format_memory(jax_peak):<12}")
     
-    print("-" * 120)
+    print("-" * 140)
     print("\nLegend:")
     print("  Stage 1: Data preprocessing & DAG creation")
     print("  Stage 2: Core computation (tax/transfer calculations)")
     print("  Stage 3: Preparing results DataFrame")
     print("  Init/Final: Memory usage before/after execution")
     print("  Δ: Memory increase during execution")
+    print("  Peak: Maximum memory usage during execution")
     
     print(f"\n{'='*120}")
     print("BENCHMARK COMPLETED")

@@ -99,7 +99,7 @@ def run_profile(N, backend, scramble_data=False):
             input_data=InputData.flat(tmp["input_data"]["flat"]),  # Provide the flat input data from stage 1
             labels=Labels(root_nodes=tmp["labels"]["root_nodes"]),
             tt_function=tmp["tt_function"],  # Reuse pre-compiled JAX function
-            include_fail_nodes=True,
+            include_fail_nodes=False,
             include_warn_nodes=False,
             backend=backend,
         )
@@ -136,7 +136,7 @@ def run_profile(N, backend, scramble_data=False):
             specialized_environment=SpecializedEnvironment(
                 tt_dag=tmp["specialized_environment"]["tt_dag"]
             ),
-            include_fail_nodes=True,
+            include_fail_nodes=False,
             include_warn_nodes=False,
             backend=backend,
         )
