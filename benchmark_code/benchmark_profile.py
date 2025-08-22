@@ -14,16 +14,15 @@ import time
 import argparse
 import hashlib
 
+from gettsim import main, InputData, MainTarget, TTTargets, Labels, SpecializedEnvironment, RawResults
+
 # Import shared benchmark configuration and utilities
 from benchmark_setup import (
-    main, TT_TARGETS, MAPPER, JAX_AVAILABLE,
+    TT_TARGETS, MAPPER, JAX_AVAILABLE,
     sync_jax_if_needed, get_memory_usage_mb, MemoryTracker,
     PROFILE_HOUSEHOLD_SIZES, BACKENDS
 )
 from benchmark_make_data import make_data
-
-# Import GETTSIM/TTSIM components
-from gettsim import InputData, MainTarget, TTTargets, Labels, SpecializedEnvironment, RawResults
 
 
 def run_profile(N, backend, scramble_data=False):

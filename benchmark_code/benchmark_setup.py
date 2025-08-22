@@ -12,32 +12,12 @@ import threading
 import psutil
 from datetime import datetime
 
-# Import GETTSIM/TTSIM components
-from gettsim import InputData, MainTarget, TTTargets, Labels, SpecializedEnvironment, RawResults
-from gettsim import germany
-import ttsim
-from ttsim.main_args import OrigPolicyObjects
-
 # JAX-specific imports for cache management
 try:
     import jax
-    import jax.numpy as jnp
     JAX_AVAILABLE = True
 except ImportError:
     JAX_AVAILABLE = False
-
-
-# =============================================================================
-# GETTSIM MAIN WRAPPER
-# =============================================================================
-
-def main(**kwargs):
-    """Wrapper around ttsim.main that automatically sets the German root path and supports tt_function."""
-    # Set German tax system as default if no orig_policy_objects provided
-    if kwargs.get('orig_policy_objects') is None:
-        kwargs['orig_policy_objects'] = OrigPolicyObjects(root=germany.ROOT_PATH)
-    
-    return ttsim.main(**kwargs)
 
 
 # =============================================================================
