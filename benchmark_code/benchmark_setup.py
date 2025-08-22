@@ -45,7 +45,6 @@ TT_TARGETS = {
                 "gesamteinnahmen_aus_renten_für_einkommensberechnung_im_folgejahr_m": "pension_total_income_for_income_calculation_next_year_m",
             },
             "entgeltpunkte_updated": "pension_entitlement_points_updated",
-            "wartezeit_15_jahre_erfüllt": "pension_waiting_period_15_years_fulfilled",
         },
         "arbeitslosen": {
             "mean_nettoeinkommen_für_bemessungsgrundlage_bei_arbeitslosigkeit_y": "mean_net_income_for_benefit_basis_in_case_of_unemployment_y",
@@ -53,7 +52,6 @@ TT_TARGETS = {
                 "betrag_versicherter_m": "unemployment_insurance_contribution_m",
             }
         },
-        "pflege": {"beitrag": {"betrag_gesamt_in_gleitzone_m": "long_term_care_insurance_contribution_total_in_transition_zone_m"}},
         "beiträge_gesamt_m": "social_insurance_contributions_total_m",
     },
     "kindergeld": {"betrag_m": "KG_betrag_m"},
