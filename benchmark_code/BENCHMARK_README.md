@@ -1,32 +1,43 @@
 # Benchmark Comparison Workflow
 
-This document explains how to compare performance between the main branch and a PR branch with optimizations.
+This document explains how to compare performance between the main branch and a PR
+branch with optimizations.
 
 ## Scripts Overview
 
 ### Core Scripts
-1. **`benchmark.py`** - Runs comprehensive performance benchmarks across multiple dataset sizes and saves results to JSON
-2. **`benchmark_profile.py`** - Runs profiling for a single configuration with detailed memory tracking and timing breakdown
-3. **`benchmark_compare.py`** - Compares results from two benchmark runs
+
+1. **`benchmark.py`** - Runs comprehensive performance benchmarks across multiple
+   dataset sizes and saves results to JSON
+1. **`benchmark_profile.py`** - Runs profiling for a single configuration with detailed
+   memory tracking and timing breakdown
+1. **`benchmark_compare.py`** - Compares results from two benchmark runs
 
 ### Supporting Files
-4. **`benchmark_setup.py`** - Shared configuration (TT_TARGETS, MAPPER, utilities) used by both main scripts
-5. **`benchmark_make_data.py`** - Synthetic data generation for standardized testing
-   - `make_data(N, scramble_data=False)` - Generate N households with optional data scrambling
+
+4. **`benchmark_setup.py`** - Shared configuration (TT_TARGETS, MAPPER, utilities) used
+   by both main scripts
+1. **`benchmark_make_data.py`** - Synthetic data generation for standardized testing
+   - `make_data(N, scramble_data=False)` - Generate N households with optional data
+     scrambling
    - By default, data is kept in sorted p_id order for optimal performance
    - Set `scramble_data=True` to test performance with unsorted data
-6. **`benchmark_compare.py`** - Stage-by-stage comparison tool
+1. **`benchmark_compare.py`** - Stage-by-stage comparison tool
 
 ## Key Features
 
 ### 3-Stage Timing Analysis
+
 All scripts break down execution into:
+
 - **Stage 1**: Data preprocessing & DAG creation
-- **Stage 2**: Core computation (tax/transfer calculations)  
+- **Stage 2**: Core computation (tax/transfer calculations)
 - **Stage 3**: DataFrame formatting (JAX → pandas conversion)
 
 ### Memory Tracking
-- Both `benchmark.py` and `benchmark_profile.py` now include comprehensive memory tracking
+
+- Both `benchmark.py` and `benchmark_profile.py` now include comprehensive memory
+  tracking
 - Continuous monitoring of peak memory usage during execution
 - Memory delta reporting (initial → final)
 
@@ -48,7 +59,7 @@ python benchmark.py -scramble
 # or: benchmark_results_20250819_143022_scrambled.json
 ```
 
-### Step 2: Run benchmark on PR branch 
+### Step 2: Run benchmark on PR branch
 
 ```bash
 # Switch to PR branch (ttsim)
@@ -114,7 +125,8 @@ py-spy record -o profile_scrambled.svg -- python benchmark_profile.py -N 32768 -
 
 ## Data Generation Options
 
-The `benchmark_make_data.py` module provides the `make_data()` function with the following options:
+The `benchmark_make_data.py` module provides the `make_data()` function with the
+following options:
 
 ```python
 # Generate sorted data (default - optimal performance)

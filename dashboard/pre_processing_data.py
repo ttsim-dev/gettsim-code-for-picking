@@ -18,7 +18,6 @@ from _gettsim.transfers.wohngeld import wohngeld_miete_m_hh_bis_2008
 from _gettsim.transfers.wohngeld import wohngeld_min_miete_m_hh
 from _gettsim.transfers.wohngeld import wohngeld_vor_vermög_check_m_hh
 
-
 wohngeld_miete_m_hh_ab_2009 = np.vectorize(wohngeld_miete_m_hh_ab_2009)
 wohngeld_miete_m_hh_bis_2008 = np.vectorize(wohngeld_miete_m_hh_bis_2008)
 wohngeld_min_miete_m_hh = np.vectorize(wohngeld_min_miete_m_hh)
