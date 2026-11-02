@@ -7,14 +7,15 @@ used by both benchmark.py and benchmark_profile.py to eliminate code duplication
 
 import gc
 import os
-import time
 import threading
+import time
+
 import psutil
-from datetime import datetime
 
 # JAX-specific imports for cache management
 try:
     import jax
+
     JAX_AVAILABLE = True
 except ImportError:
     JAX_AVAILABLE = False
@@ -50,7 +51,7 @@ TT_TARGETS = {
             "mean_nettoeinkommen_für_bemessungsgrundlage_bei_arbeitslosigkeit_y": "mean_net_income_for_benefit_basis_in_case_of_unemployment_y",
             "beitrag": {
                 "betrag_versicherter_m": "unemployment_insurance_contribution_m",
-            }
+            },
         },
         "beiträge_gesamt_m": "social_insurance_contributions_total_m",
     },
@@ -65,7 +66,7 @@ TT_TARGETS = {
     "elterngeld": {
         "betrag_m": "EG_betrag_m",
         "anrechenbarer_betrag_m": "EG_anrechenbarer_betrag_m",
-        "mean_nettoeinkommen_für_bemessungsgrundlage_nach_geburt_m": "EG_mean_nettoeinkommen_für_bemessungsgrundlage_nach_geburt_m"
+        "mean_nettoeinkommen_für_bemessungsgrundlage_nach_geburt_m": "EG_mean_nettoeinkommen_für_bemessungsgrundlage_nach_geburt_m",
     },
     "unterhalt": {
         "tatsächlich_erhaltener_betrag_m": "unterhalt_tatsächlich_erhaltener_betrag_m",
@@ -211,7 +212,7 @@ MAPPER = {
         "zu_versteuerndes_einkommen_vorjahr_y_sn": 30000.0,
         "mean_nettoeinkommen_in_12_monaten_vor_geburt_m": 2000.0,
         "claimed": False,
-        "bisherige_bezugsmonate": 0
+        "bisherige_bezugsmonate": 0,
     },
     "bürgergeld": {
         # "betrag_m_bg": 0.0,
@@ -232,11 +233,13 @@ MAPPER = {
 # JAX UTILITIES
 # =============================================================================
 
+
 def sync_jax_if_needed(backend):
     """Force JAX synchronization to ensure all operations are complete."""
     if backend == "jax" and JAX_AVAILABLE:
         try:
             import jax
+
             # Force synchronization of all JAX operations
             jax.block_until_ready(jax.numpy.array([1.0]))
             print("  JAX operations synchronized")
@@ -251,6 +254,7 @@ def clear_jax_cache():
     if JAX_AVAILABLE:
         try:
             import jax
+
             # Clear the JIT compilation cache
             jax.clear_caches()
             print("  JAX cache cleared")
@@ -262,6 +266,7 @@ def clear_jax_cache():
 # MEMORY TRACKING
 # =============================================================================
 
+
 def get_memory_usage_mb():
     """Get current memory usage in MB."""
     process = psutil.Process(os.getpid())
@@ -270,42 +275,42 @@ def get_memory_usage_mb():
 
 class MemoryTracker:
     """Track peak memory usage during execution with continuous monitoring."""
+
     def __init__(self):
         self.peak_memory = 0
         self.process = psutil.Process(os.getpid())
         self.monitoring = False
         self.monitor_thread = None
-    
+
     def start_monitoring(self):
         """Start continuous memory monitoring in background thread."""
         self.monitoring = True
         self.peak_memory = self.get_current_memory()
         self.monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
         self.monitor_thread.start()
-    
+
     def stop_monitoring(self):
         """Stop continuous memory monitoring."""
         self.monitoring = False
         if self.monitor_thread:
             self.monitor_thread.join(timeout=1.0)
-    
+
     def _monitor_loop(self):
         """Background monitoring loop."""
         while self.monitoring:
             self.update()
             time.sleep(0.01)  # Check every 10ms
-    
+
     def get_current_memory(self):
         """Get current memory usage in MB."""
         return self.process.memory_info().rss / 1024 / 1024
-    
+
     def update(self):
         """Update peak memory if current usage is higher."""
         current = self.get_current_memory()
-        if current > self.peak_memory:
-            self.peak_memory = current
+        self.peak_memory = max(self.peak_memory, current)
         return current
-    
+
     def get_peak(self):
         """Get peak memory usage in MB."""
         return self.peak_memory
@@ -314,6 +319,7 @@ class MemoryTracker:
 # =============================================================================
 # SESSION MANAGEMENT
 # =============================================================================
+
 
 def force_garbage_collection():
     """Force aggressive garbage collection between runs."""
@@ -325,14 +331,14 @@ def force_garbage_collection():
 def reset_session_state(backend):
     """Reset session state between different backend runs."""
     print(f"  Resetting session state for {backend} backend...")
-    
+
     # Force garbage collection
     force_garbage_collection()
-    
+
     # Clear JAX-specific state if switching to/from JAX
     if backend == "jax" or JAX_AVAILABLE:
         clear_jax_cache()
-    
+
     # Add a small delay to let system settle
     time.sleep(0.5)
 
@@ -341,6 +347,6 @@ def reset_session_state(backend):
 # COMMON DATASET SIZES
 # =============================================================================
 
-BENCHMARK_HOUSEHOLD_SIZES = [2**15-1, 2**15, 2**16, 2**17, 2**18, 2**19, 2**20]
+BENCHMARK_HOUSEHOLD_SIZES = [2**15 - 1, 2**15, 2**16, 2**17, 2**18, 2**19, 2**20]
 PROFILE_HOUSEHOLD_SIZES = [2**15]  # Default for profiling: 32,768 households
 BACKENDS = ["numpy", "jax"]
